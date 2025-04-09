@@ -1,50 +1,76 @@
 package com.example.neo4japi;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.annotation.Order;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.oauth2.client.web.DefaultOAuth2AuthorizationRequestResolver;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver;
+import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.oauth2.jwt.JwtDecoders;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import java.net.InetSocketAddress;
+import java.net.Proxy;
+import java.util.function.Consumer;
 
 @Configuration
+@EnableWebSecurity
 public class MultiSecurityConfig {
 
-    @Value("${spring.security.enabled}") // Toggle security via application.yml
-    private boolean securityEnabled;
+    private final boolean securityEnabled;
+    private final String proxyHost;
+    private final Integer proxyPort;
 
-    @Value("${spring.security.oauth2.resourceserver.jwt.jwt-custom-uri}") // Toggle security via application.yml
-    private String jwtCustomUri;
+    public MultiSecurityConfig(ApplicationProperties properties) {
+        this.securityEnabled = properties.isSecurityEnabled();
+        this.proxyHost = properties.getProxyHost();
+        this.proxyPort = properties.getProxyPort();
+    }
 
-    // for proxy 
-    private final JwtDecoder jwtDecoder;
-    public MultiSecurityConfig(JwtDecoder jwtDecoder) {
-        this.jwtDecoder = jwtDecoder;
+    @Bean
+    public RestTemplate oauth2RestTemplate() {
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        
+        if (proxyHost != null && proxyPort != null) {
+            Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(proxyHost, proxyPort));
+            requestFactory.setProxy(proxy);
+        }
+        
+        return new RestTemplate(requestFactory);
+    }
+
+    @Bean
+    public OAuth2AuthorizationRequestResolver authorizationRequestResolver(
+            ClientRegistrationRepository clientRegistrationRepository) {
+        
+        DefaultOAuth2AuthorizationRequestResolver resolver = 
+            new DefaultOAuth2AuthorizationRequestResolver(
+                clientRegistrationRepository, "/oauth2/authorization");
+        
+        resolver.setAuthorizationRequestCustomizer(authorizationRequestCustomizer());
+        return resolver;
+    }
+
+    private Consumer<OAuth2AuthorizationRequest.Builder> authorizationRequestCustomizer() {
+        return customizer -> {
+            // Add any custom parameters if needed
+        };
     }
 
     @Bean
     @Order(1)
     public SecurityFilterChain apiFilterChain(HttpSecurity http) throws Exception {
-        http.securityMatcher("/api/**"); // Explicit matcher definition
-
+        http.securityMatcher("/api/**");
         if (securityEnabled) {
             http.authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
-                    //.httpBasic()
-                    // does not work with default proxy
-                    //.oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.decoder(JwtDecoders.fromIssuerLocation(jwtCustomUri)) ))
-                    //.oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.decoder(jwtDecoder))) // Use the custom JwtDecoder)
-                    //.oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.jwkSetUri("https://sso.roosit.eu/realms/Kempo") ))
-                    .oauth2ResourceServer(oauth2 -> oauth2.jwt())
-                    .csrf()
-                    .disable(); // Disable CSRF for APIs
+                .oauth2ResourceServer(oauth2 -> oauth2.jwt())
+                .csrf().disable();
         } else {
             http.authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
-                    .csrf()
-                    .disable(); // Allow all requests when security is disabled
+                .csrf().disable();
         }
-
         return http.build();
     }
 
@@ -53,22 +79,19 @@ public class MultiSecurityConfig {
     public SecurityFilterChain swaggerFilterChain(HttpSecurity http) throws Exception {
         if (securityEnabled) {
             http.authorizeHttpRequests(auth -> auth
-                    .requestMatchers("/swagger-ui/**")
-                    .authenticated()
-                    .anyRequest()
-                    .permitAll())
+                    .requestMatchers("/swagger-ui/**").authenticated()
+                    .anyRequest().permitAll())
                 .oauth2Login(oauth2 -> oauth2
                     .defaultSuccessUrl("/swagger-ui/index.html", false)
                     .failureUrl("/error"))
-                .exceptionHandling(exception -> exception.authenticationEntryPoint((request, response, authException) -> {
-                    response.sendRedirect("/oauth2/authorization/keycloak");
-                }));
+                .exceptionHandling(exception -> exception
+                    .authenticationEntryPoint((request, response, authException) -> {
+                        response.sendRedirect("/oauth2/authorization/keycloak");
+                    }));
         } else {
             http.authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
-                .csrf().disable(); // Disable CSRF since security is off
+                .csrf().disable();
         }
         return http.build();
     }
-    
 }
-
