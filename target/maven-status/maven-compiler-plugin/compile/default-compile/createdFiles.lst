@@ -1,0 +1,6 @@
+com\example\neo4japi\Neo4jAppApplication.class
+com\example\neo4japi\Person.class
+com\example\neo4japi\PersonRepository.class
+com\example\neo4japi\ProxyConfig.class
+com\example\neo4japi\Neo4jConfig.class
+com\example\neo4japi\MultiSecurityConfig.class

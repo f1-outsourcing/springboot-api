@@ -1,11 +1,15 @@
+# src/main/resources/application.yml
 app:
   security:
     enabled: true
   proxy:
     host: ${HTTPS_PROXY_HOST:proxy.example.com}
     port: ${HTTPS_PROXY_PORT:3128}
+    username: ${HTTPS_PROXY_USERNAME:}
+    password: ${HTTPS_PROXY_PASSWORD:}
   config:
     oidcuuid: uuid
+
 spring:
   main:
     lazy-initialization: true
@@ -25,15 +29,15 @@ spring:
       default-page-size: 50
   security:
     enabled: true
-    filter-chain.enabled: true # disables the default chain.
+    filter-chain.enabled: true
     user:
       name: client
       password: client
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: ${JWT_URI}
-          jwt-custom-uri: ${JWT_URI}
+          issuer-uri: https://sso.roosit.eu/realms/Kempo
+          jwt-custom-uri: https://sso.roosit.eu/realms/Kempo
           connect-timeout: 5000
           read-timeout: 5000
       client:
